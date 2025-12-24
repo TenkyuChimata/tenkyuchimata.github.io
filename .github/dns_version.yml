@@ -1,0 +1,81 @@
+name: Sync Version to Cloudflare DNS (TXT)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  sync_version_txt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Read versions from repo files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MCEEW_VERSION="$(jq -r '.version' MCEEW/version.json)"
+          SCEEW_VERSION="$(jq -r '.version' SCEEW/version.json)"
+
+          if [[ -z "$MCEEW_VERSION" || "$MCEEW_VERSION" == "null" ]]; then
+            echo "MCEEW/version.json missing .version"
+            exit 1
+          fi
+
+          if [[ -z "$SCEEW_VERSION" || "$SCEEW_VERSION" == "null" ]]; then
+            echo "SCEEW/version.json missing .version"
+            exit 1
+          fi
+
+          echo "MCEEW_VERSION=$MCEEW_VERSION" >> "$GITHUB_ENV"
+          echo "SCEEW_VERSION=$SCEEW_VERSION" >> "$GITHUB_ENV"
+
+      - name: Update Cloudflare TXT records
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_DNS_ZONE_ID: ${{ secrets.CLOUDFLARE_DNS_ZONE_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          update_txt() {
+            local record_name="$1"
+            local version="$2"
+            local content="version=${version}"
+
+            local record_id
+            record_id="$(curl -sS -X GET \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_DNS_ZONE_ID}/dns_records?type=TXT&name=${record_name}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              | jq -r '.result[0].id')"
+
+            if [[ -z "$record_id" || "$record_id" == "null" ]]; then
+              echo "Failed to get TXT record id for ${record_name}"
+              exit 1
+            fi
+
+            echo "Updating TXT ${record_name} => ${content}"
+
+            curl -sS -X PATCH \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_DNS_ZONE_ID}/dns_records/${record_id}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -d "{
+                    \"name\": \"${record_name}\",
+                    \"ttl\": 60,
+                    \"type\": \"TXT\",
+                    \"comment\": \"updated at $(date -u '+%Y-%m-%d %H:%M:%S') from ${GITHUB_REPOSITORY}@${GITHUB_SHA}\",
+                    \"content\": \"${content}\"
+                  }" | jq .
+          }
+
+          update_txt "mceew.mtf.edu.kg" "${MCEEW_VERSION}"
+          update_txt "sceew.mtf.edu.kg" "${SCEEW_VERSION}"
