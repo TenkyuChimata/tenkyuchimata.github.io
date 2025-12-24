@@ -48,7 +48,7 @@ jobs:
           update_txt() {
             local record_name="$1"
             local version="$2"
-            local content="\"version=${version}\""
+            local content="version=${version}"
 
             local record_id
             record_id="$(curl -sS -X GET \
