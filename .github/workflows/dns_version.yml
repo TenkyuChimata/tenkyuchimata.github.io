@@ -72,7 +72,7 @@ jobs:
                     \"name\": \"${record_name}\",
                     \"ttl\": 60,
                     \"type\": \"TXT\",
-                    \"comment\": \"updated at $(date -u '+%Y-%m-%d %H:%M:%S') from ${GITHUB_REPOSITORY}@${GITHUB_SHA}\",
+                    \"comment\": \"${record_name} ${version} $(date -u +%Y%m%dT%H%M%SZ) ${GITHUB_REPOSITORY}@${GITHUB_SHA:0:7}\",
                     \"content\": \"${content}\"
                   }" | jq .
           }
